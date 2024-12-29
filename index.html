@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-time Messaging</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+        }
+
+        body {
+            background: #f0f2f5;
+            height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .auth-container {
+            max-width: 400px;
+            margin: 50px auto;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .chat-container {
+            display: none;
+            grid-template-columns: 300px 1fr;
+            gap: 20px;
+            height: calc(100vh - 40px);
+        }
+
+        .sidebar {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chat-area {
+            background: white;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .messages {
+            flex-grow: 1;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .message {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 8px;
+            max-width: 70%;
+        }
+
+        .message.sent {
+            background: #0084ff;
+            color: white;
+            margin-left: auto;
+        }
+
+        .message.received {
+            background: #e4e6eb;
+            margin-right: auto;
+        }
+
+        .input-area {
+            padding: 20px;
+            border-top: 1px solid #ddd;
+            display: flex;
+            gap: 10px;
+        }
+
+        input, button {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            outline: none;
+        }
+
+        input {
+            flex-grow: 1;
+        }
+
+        button {
+            background: #0084ff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            min-width: 100px;
+        }
+
+        button:hover {
+            background: #0073e6;
+        }
+
+        .user-id {
+            padding: 10px;
+            background: #f0f2f5;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+
+        #searchUser {
+            margin-bottom: 10px;
+        }
+
+        .chat-list {
+            flex-grow: 1;
+            overflow-y: auto;
+        }
+
+        .chat-item {
+            padding: 10px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+
+        .chat-item:hover {
+            background: #f0f2f5;
+        }
+
+        .active-chat {
+            background: #e4e6eb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="auth-container" id="authContainer">
+            <h2>Welcome to Messaging App</h2>
+            <div id="authForm">
+                <input type="email" id="email" placeholder="Email" required>
+                <input type="password" id="password" placeholder="Password" required>
+                <button onclick="signUp()">Sign Up</button>
+                <button onclick="signIn()">Sign In</button>
+            </div>
+        </div>
+
+        <div class="chat-container" id="chatContainer">
+            <div class="sidebar">
+                <div class="user-id" id="userId"></div>
+                <input type="text" id="searchUser" placeholder="Search user by ID">
+                <button onclick="startChat()">Start Chat</button>
+                <div class="chat-list" id="chatList"></div>
+            </div>
+
+            <div class="chat-area">
+                <div class="messages" id="messages"></div>
+                <div class="input-area">
+                    <input type="text" id="messageInput" placeholder="Type a message...">
+                    <button onclick="sendMessage()">Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = 'https://jpphrvektvbpdxuvtgmw.supabase.co'
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpwcGhydmVrdHZicGR4dXZ0Z213Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzU1MDE0ODUsImV4cCI6MjA1MTA3NzQ4NX0.3gyADNnD_r9ERElETL8eg5OQVn9wQ3o3RMAC3JkNn9Q'
+        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+
+        let currentUser = null
+        let currentChat = null
+        let subscription = null
+
+        // Authentication functions
+        async function signUp() {
+            const email = document.getElementById('email').value
+            const password = document.getElementById('password').value
+
+            const { data, error } = async function signUp() {
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+
+    const { data, error } = await supabase.auth.signUp({
+        email,
+        password
+    });
+
+    if (error) {
+        alert('Error signing up: ' + error.message);
+        return;
+    }
+
+    await initializeUser(data.user);
+    showChat();
+}
+        async function signIn() {
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+    });
+
+    if (error) {
+        alert('Error signing in: ' + error.message);
+        return;
+    }
+
+    await initializeUser(data.user);
+    showChat();
+}
+
+        async function initializeUser(user) {
+    currentUser = user;
+
+    const { data, error } = await supabase
+        .from('profiles')
+        .select()
+        .eq('id', user.id)
+        .single();
+
+    if (!data) {
+        // Create new profile if it doesn't exist
+        const { data: profileData, error: profileError } = await supabase
+            .from('profiles')
+            .insert([{ id: user.id, email: user.email }]);
+
+        if (profileError) {
+            alert('Error creating profile: ' + profileError.message);
+            return;
+        }
+    }
+
+    document.getElementById('userId').textContent = `Your ID: ${user.id}`;
+    await loadChats();
+    setupRealtimeSubscription();
+}
+
+        // Chat functions
+        async function startChat() {
+            const targetUserId = document.getElementById('searchUser').value
+            if (!targetUserId || targetUserId === currentUser.id) return
+
+            // Check if chat exists
+            const { data: existingChat } = await supabase
+                .from('chats')
+                .select()
+                .or(`user1.eq.${currentUser.id},user2.eq.${currentUser.id}`)
+                .or(`user1.eq.${targetUserId},user2.eq.${targetUserId}`)
+                .single()
+
+            if (!existingChat) {
+                // Create new chat
+                const { data, error } = await supabase
+                    .from('chats')
+                    .insert([{
+                        user1: currentUser.id,
+                        user2: targetUserId
+                    }])
+                    .select()
+                    .single()
+
+                if (error) {
+                    alert('User not found or error creating chat')
+                    return
+                }
+            }
+
+            await loadChats()
+        }
+
+        async function loadChats() {
+            const { data: chats, error } = await supabase
+                .from('chats')
+                .select(`
+                    *,
+                    user1_profile:profiles!chats_user1_fkey(email),
+                    user2_profile:profiles!chats_user2_fkey(email)
+                `)
+                .or(`user1.eq.${currentUser.id},user2.eq.${currentUser.id}`)
+
+            const chatList = document.getElementById('chatList')
+            chatList.innerHTML = ''
+
+            chats.forEach(chat => {
+                const otherUserId = chat.user1 === currentUser.id ? chat.user2 : chat.user1
+                const otherUserEmail = chat.user1 === currentUser.id 
+                    ? chat.user2_profile.email 
+                    : chat.user1_profile.email
+
+                const div = document.createElement('div')
+                div.className = 'chat-item'
+                div.textContent = `Chat with ${otherUserEmail}`
+                div.onclick = () => selectChat(chat.id, otherUserId)
+                chatList.appendChild(div)
+            })
+        }
+
+        async function selectChat(chatId, otherUserId) {
+            if (subscription) {
+                subscription.unsubscribe()
+            }
+
+            currentChat = { id: chatId, otherUserId }
+            document.querySelectorAll('.chat-item').forEach(item => item.classList.remove('active-chat'))
+            event.currentTarget.classList.add('active-chat')
+
+            // Load messages
+            const { data: messages } = await supabase
+                .from('messages')
+                .select()
+                .eq('chat_id', chatId)
+                .order('created_at', { ascending: true })
+
+            displayMessages(messages || [])
+
+            // Subscribe to new messages
+            subscription = supabase
+                .channel(`chat:${chatId}`)
+                .on('postgres_changes', {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'messages',
+                    filter: `chat_id=eq.${chatId}`
+                }, payload => {
+                    displayNewMessage(payload.new)
+                    if (payload.new.sender_id !== currentUser.id) {
+                        notifyNewMessage(payload.new)
+                    }
+                })
+                .subscribe()
+        }
+
+        function displayMessages(messages) {
+            const messagesDiv = document.getElementById('messages')
+            messagesDiv.innerHTML = ''
+
+            messages.forEach(message => {
+                const messageDiv = document.createElement('div')
+                messageDiv.className = `message ${message.sender_id === currentUser.id ? 'sent' : 'received'}`
+                messageDiv.textContent = message.content
+                messagesDiv.appendChild(messageDiv)
+            })
+
+            messagesDiv.scrollTop = messagesDiv.scrollHeight
+        }
+
+        function displayNewMessage(message) {
+            const messagesDiv = document.getElementById('messages')
+            const messageDiv = document.createElement('div')
+            messageDiv.className = `message ${message.sender_id === currentUser.id ? 'sent' : 'received'}`
+            messageDiv.textContent = message.content
+            messagesDiv.appendChild(messageDiv)
+            messagesDiv.scrollTop = messagesDiv.scrollHeight
+        }
+
+        async function sendMessage() {
+            if (!currentChat) return
+
+            const input = document.getElementById('messageInput')
+            const content = input.value.trim()
+            if (!content) return
+
+            const message = {
+                chat_id: currentChat.id,
+                sender_id: currentUser.id,
+                content: content
+            }
+
+            const { error } = await supabase
+                .from('messages')
+                .insert([message])
+
+            if (error) {
+                alert('Error sending message')
+                return
+            }
+
+            input.value = ''
+        }
+
+        function setupRealtimeSubscription() {
+            // Subscribe to all user's chats for notifications
+            supabase
+                .channel('global_changes')
+                .on('postgres_changes', {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'messages',
+                    filter: `receiver_id=eq.${currentUser.id}`
+                }, payload => {
+                    if (!currentChat || payload.new.chat_id !== currentChat.id) {
+                        notifyNewMessage(payload.new)
+                    }
+                })
+                .subscribe()
+        }
+
+        function notifyNewMessage(message) {
+            if (!("Notification" in window)) return
+
+            if (Notification.permission === "granted") {
+                new Notification("New Message", {
+                    body: message.content
+                })
+            } else if (Notification.permission !== "denied") {
+                Notification.requestPermission().then(permission => {
+                    if (permission === "granted") {
+                        new Notification("New Message", {
+                            body: message.content
+                        })
+                    }
+                })
+            }
+        }
+
+        function showChat() {
+            document.getElementById('authContainer').style.display = 'none'
+            document.getElementById('chatContainer').style.display = 'grid'
+        }
+
+        // Handle enter key in message input
+        document.getElementById('messageInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendMessage()
+            }
+        })
+    </script>
+</body>
+</html>
